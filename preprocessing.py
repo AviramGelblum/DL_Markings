@@ -1,9 +1,17 @@
+import pandas as pd
 import numpy as np
 import math
 import itertools
 import pickle
 import copy
 import partitioning
+from sklearn.linear_model import LinearRegression
+
+# import timeit
+# starttime = timeit.default_timer()
+# print("The start time is :",starttime)
+# test()
+# print("The time difference is :", timeit.default_timer() - starttime)
 
 # region Globals
 MARKING_TIME = 0.1  # typical marking time in sec
@@ -61,7 +69,6 @@ def cut_array_into_windows(features, labels, window_size, stride):
         if last_full_window_ind == 1:  # Zero-pad samples with size<window_size
             seq_feature_list[0] = np.pad(seq_feature_list[0], ((0, window_size - seq_feature_list[0].shape[0]), (0, 0)))
             seq_label_list[0] = np.pad(seq_label_list[0], (0, window_size - seq_label_list[0].shape[0]))
-        # stack_list.append(np.stack(sequence_list, axis=0))
 
         feature_list.extend(seq_feature_list)
         label_list.extend(seq_label_list)
@@ -76,7 +83,6 @@ def get_test_data(features, labels, trajectory_association, percent_test, origin
     max_length = round(percent_test*len(original_trajectory_sizes)/100)
     subset, indices_of_subset_in_original = partitioning.find_approximate_subset(
         original_trajectory_sizes, list(range(len(original_trajectory_sizes))), total_test_trajectory_length, max_length)
-    # indices_of_subset_in_original = np.where(np.isin(original_trajectory_sizes, subset))[0]
     indices_of_subset = np.where(np.isin(trajectory_association, indices_of_subset_in_original))[0]
 
     test = {'features': features[indices_of_subset,:,:], 'labels': labels[indices_of_subset,:], 'association':
@@ -137,13 +143,13 @@ def smear_labels(training):
             sequence[inds_in_window] = 1
 
 
-def augment_random_rotations(training, circular_indices, spatial_coordinate_indices, augment_coefficient=2):
+def augment_random_rotations(training, circular_indices, spatial_coordinate_indices, augment_factor=2):
     random_thetas = []
-    orig_features_len = training['features'].shape[0]
+    num_series_examples = training['features'].shape[0]
 
-    for aug_ind in range(augment_coefficient):
-        new_features = copy.deepcopy(training['features'][:orig_features_len, :, :])
-        random_thetas_new = 360*np.random.random(orig_features_len)
+    for _ in range(augment_factor):
+        new_features = copy.copy(training['features'][:num_series_examples, :, :])
+        random_thetas_new = 360*np.random.random(num_series_examples)
         for sequence, random_theta in zip(new_features, random_thetas_new):
             for index in circular_indices:
                 sequence[:, index] = (sequence[:, index] + random_theta) % 360
@@ -153,16 +159,47 @@ def augment_random_rotations(training, circular_indices, spatial_coordinate_indi
             sequence[:, spatial_coordinate_indices] = np.matmul(j, xy.T).T
         random_thetas.append(random_thetas_new)
         training['features'] = np.concatenate([training['features'], new_features])
-    training['labels'] = np.tile(training['labels'], [augment_coefficient+1, 1])
+    training['labels'] = np.tile(training['labels'], [augment_factor+1, 1])
     random_thetas = np.concatenate(random_thetas)
     return random_thetas
 
-def augment_mirroring(training, circular_indices, spatial_coordinate_indices):
-    # TODO: augmentation - mirroring
+
+def augment_xy_flip(training, circular_indices, spatial_coordinate_indices):
+    # flip x -> -x, y -> -y
+    theta_flip = [180, 0]
+    spatial_flip_ind = [0, 1]
+    num_flips = len(theta_flip)
+    num_series_examples = training['features'].shape[0]
+    for thet, spat_ind in zip(theta_flip, spatial_flip_ind):
+        new_features = copy.copy(training['features'][:num_series_examples, :, :])
+        for sequence in new_features:
+            for index in circular_indices:
+                sequence[:, index] = (thet-sequence[:, index]) % 360
+            sequence[:, spatial_coordinate_indices[spat_ind]] = -sequence[:, spatial_coordinate_indices[spat_ind]]
+        training['features'] = np.concatenate([training['features'], new_features])
+    training['labels'] = np.tile(training['labels'], [num_flips+1, 1])
 
 
-def reduce_space(data, spatial_coordinate_indices):
-    # TODO: feature engineering - x,y - subtract linear fit from data to get a one dimensional value
+def detrend(data, spatial_coordinate_indices):
+    model = LinearRegression()
+    sequence_list = []
+    for sequence in data['features']:
+        x = sequence[:, spatial_coordinate_indices[0]].reshape(-1, 1)
+        y = sequence[:, spatial_coordinate_indices[1]]
+        model.fit(x, y)
+        trend = model.predict(x)
+
+        detrended_y = y-trend
+        x_zero = x-x[0]
+        x_zero = np.squeeze(x_zero, axis=1)
+
+        new_spatial_features = np.stack([x_zero, detrended_y], axis=1)
+        sequence = np.insert(sequence, spatial_coordinate_indices, new_spatial_features, axis=1)
+
+        columns_to_remove = [c[1]+1+c[0] for c in enumerate(spatial_coordinate_indices)]
+        sequence_list.append(np.delete(sequence, columns_to_remove, axis=1))
+    data['features'] = np.stack(sequence_list)
+
 
 def separate_circular_features(data, circular_indices):
     sequence_list = []
@@ -178,7 +215,24 @@ def separate_circular_features(data, circular_indices):
     data['features'] = np.stack(sequence_list)
 
 
-def add_aggregate_velocity_features(data):
-    # TODO: feature engineering - mean and std of velocity, scale of marking (200 ms). maybe other measures (kurtosis,
+def add_aggregate_velocity_features(data, velocity_magnitude_indices):
+    window_size = math.ceil(MARKING_TIME * fps)
+    if not window_size % 2:
+        window_size += 1
+
+    sequence_list = []
+    for sequence in data['features']:
+        sequence_df = pd.DataFrame(sequence[:, velocity_magnitude_indices])
+        rolling_mean = sequence_df.rolling(window=window_size, center=True, min_periods=1).mean()
+        rolling_std = sequence_df.rolling(window=window_size, center=True, min_periods=1).std()
+
+        sequence = np.insert(sequence, [v+1 for v in velocity_magnitude_indices], rolling_mean, axis=1)
+        std_insert_indices = [k[1]+2+k[0] for k in enumerate(velocity_magnitude_indices)]
+        sequence_list.append(np.insert(sequence, std_insert_indices, rolling_std, axis=1))
+    data['features'] = np.stack(sequence_list)
+
+    # TODO: feature engineering -  maybe other measures (kurtosis,
     #  skew)?
+
+    # TODO: normalization/standardization?
 

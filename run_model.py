@@ -40,8 +40,7 @@ def main():
             preprocessing.get_test_data(pos_features, pos_labels, trajectory_association, percent_test, original_trajectory_sizes)
 
         print('Stratifying positive/negative frequency across folds')
-        number_of_folds = 5 #trajectory_association.shape[0] - 1  # leave-one-out for now
-        # Training and validation folds in training data Folds (?) X N_per_Fold X Timesteps X Features&Labels
+        number_of_folds = 5  # trajectory_association.shape[0] - 1  # leave-one-out for now
         training,  folds_indices = preprocessing.stratify_training_data(pos_features, pos_labels, trajectory_association,
                                                                         number_of_folds)
 
@@ -58,18 +57,22 @@ def main():
 
         print('Augmenting data (random rotations)')
         random_rotation_thetas = preprocessing.augment_random_rotations(training, circular_indices, spatial_indices,
-                                                                        augment_coefficient=2)
+                                                                        augment_factor=2)
+        print('Augmenting data (xy flipping)')
+        preprocessing.augment_xy_flip(training, circular_indices, spatial_indices)
 
-        random_mirroring = preprocessing.augment_mirroring(training, circular_indices, spatial_indices,
-                                                           augment_coefficient=2)
+        print('De-trending y (linear), setting initial x to zero')
+        for data in [training, validation, test]:
+            preprocessing.detrend(data, spatial_indices)
+
         print('Recalculating circular features into cos/sin')
-        preprocessing.separate_circular_features(training, circular_indices)
-        preprocessing.separate_circular_features(validation, circular_indices)
-        preprocessing.separate_circular_features(test, circular_indices)
+        for data in [training, validation, test]:
+            preprocessing.separate_circular_features(data, circular_indices)
 
-
-
-
+        velocity_magnitude_indices = [2, 5]
+        print('Adding aggregate velocity features (mean, std)')
+        for data in [training, validation, test]:
+            preprocessing.add_aggregate_velocity_features(data, velocity_magnitude_indices)
 
         # TODO: get model from model file, run
 
