@@ -126,22 +126,25 @@ def create_validation_set(training, folds_indices, fold_num=0):
     return validation
 
 
-def smear_labels(training):
+def dilate_labels(training, window_size):
     # currently only rectangular window, add other window types if needed
     # disregarding 1,2 labels - smear everything into 1 class
-    window_size = math.ceil(MARKING_TIME*fps)
+
     if not window_size % 2:
         window_size += 1
     for sequence in training['labels']:
-        label_inds = np.nonzero(sequence)[0]
-        if label_inds.size:
-            i_minus = label_inds-(window_size-1)/2
-            i_plus = label_inds+(window_size-1)/2
-            inds_in_window = [np.arange(max(im, 0), min(ip+1, sequence.shape[0]), dtype=int) for
-                              im, ip in zip(i_minus, i_plus)]
-            inds_in_window = np.unique(np.concatenate(inds_in_window))
-            sequence[inds_in_window] = 1
+        dilate_sequence(sequence, window_size)
 
+
+def dilate_sequence(sequence, window_size):
+    label_inds = np.nonzero(sequence)[0]
+    if label_inds.size:
+        i_minus = label_inds - (window_size - 1) / 2
+        i_plus = label_inds + (window_size - 1) / 2
+        inds_in_window = [np.arange(max(im, 0), min(ip + 1, sequence.shape[0]), dtype=int) for
+                          im, ip in zip(i_minus, i_plus)]
+        inds_in_window = np.unique(np.concatenate(inds_in_window))
+        sequence[inds_in_window] = 1
 
 def augment_random_rotations(training, circular_indices, spatial_coordinate_indices, augment_factor=2):
     random_thetas = []
@@ -235,4 +238,3 @@ def add_aggregate_velocity_features(data, velocity_magnitude_indices):
     #  skew)?
 
     # TODO: normalization/standardization?
-
