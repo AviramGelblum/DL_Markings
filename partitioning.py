@@ -1,5 +1,6 @@
 import numpy as np
 import copy
+import math
 
 
 def find_approximate_subset(numbers_in, indices, goal, max_length=None, pop=False):
@@ -17,7 +18,10 @@ def find_approximate_subset(numbers_in, indices, goal, max_length=None, pop=Fals
     subset = []
     subset_indices = []
     sum_subset = sum(subset)
-    multiplier = max_length
+    if max_length == math.inf:
+        multiplier = 1
+    else:
+        multiplier = max_length
 
     while sum_subset < goal:
         if len(subset) == max_length:
@@ -41,10 +45,10 @@ def find_approximate_subset(numbers_in, indices, goal, max_length=None, pop=Fals
 def balanced_multi_way_partition(numbers: list, goal, max_length, number_of_sets):
     indices = list(range(len(numbers)))
     subsets_indices = []
-    for _ in range(number_of_sets-1):
-        _, subset_indices = find_approximate_subset(numbers, indices, goal, max_length, pop=True)
+    for i in range(number_of_sets-1):
+        ss, subset_indices = find_approximate_subset(numbers, indices, goal, max_length, pop=True)
         subsets_indices.append(subset_indices)
-    #   print('subset {} sum is {}, subset {} length is {}'.format(i+1, sum(ss), i+1, len(ss)))
+    #     print('subset {} sum is {}, subset {} length is {}'.format(i+1, sum(ss), i+1, len(ss)))
     # print('subset {} sum is {}, subset {} length is {}'.format(i+2, sum(numbers), i+2, len(numbers)))
     subsets_indices.append(indices)
     return subsets_indices

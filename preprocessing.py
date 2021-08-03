@@ -6,6 +6,8 @@ import pickle
 import copy
 import partitioning
 from sklearn.linear_model import LinearRegression
+from sklearn.preprocessing import MinMaxScaler
+import random
 
 # import timeit
 # starttime = timeit.default_timer()
@@ -34,6 +36,16 @@ def get_set_randomality():
         raise error
 
 
+def transform(features, indices_to_transform, transformer):
+    for i in indices_to_transform:
+        stscaler = transformer()
+        only_feature_list = [p[:, i] for p in features]
+        only_feature_array = np.concatenate(only_feature_list)
+        stscaler.fit(only_feature_array.reshape(-1, 1))
+        for sequence in features:
+            sequence[:, i] = np.squeeze(stscaler.transform(sequence[:, i].reshape(-1, 1)))
+
+
 def separate_any_positive_examples(features, labels):
     num_positives = np.array([sum(l) for l in labels])
     where_positives = np.nonzero(num_positives)[0]
@@ -44,6 +56,10 @@ def separate_any_positive_examples(features, labels):
     negative_labels = [labels[w] for w in where_negatives]
     negative_features = [features[w] for w in where_negatives]
     return positive_labels, positive_features, where_positives, negative_labels, negative_features
+
+
+def divisible_window_size(orig_size, divider):
+    return orig_size + (divider - orig_size % divider)
 
 
 def cut_array_into_windows(features, labels, window_size, stride):
@@ -85,7 +101,7 @@ def get_test_data(features, labels, trajectory_association, percent_test, origin
         original_trajectory_sizes, list(range(len(original_trajectory_sizes))), total_test_trajectory_length, max_length)
     indices_of_subset = np.where(np.isin(trajectory_association, indices_of_subset_in_original))[0]
 
-    test = {'features': features[indices_of_subset,:,:], 'labels': labels[indices_of_subset,:], 'association':
+    test = {'features': features[indices_of_subset], 'labels': labels[indices_of_subset], 'association':
             trajectory_association[indices_of_subset]}
     trajectory_association = np.delete(trajectory_association, indices_of_subset)
     features = np.delete(features, indices_of_subset, axis=0)
@@ -93,31 +109,49 @@ def get_test_data(features, labels, trajectory_association, percent_test, origin
     return test, trajectory_association, features, labels
 
 
-def stratify_training_data(features, labels, trajectory_association, number_of_folds):
-    num_positives = np.sum(labels, axis=1)
-    where_positives = np.nonzero(num_positives)[0]
-    only_positives = list(num_positives[where_positives])
-    sum_per_set = round(np.sum(only_positives)/number_of_folds)
-    num_positive_sequences = only_positives.__len__()
-    folds_indices_in_positives = partitioning.balanced_multi_way_partition(only_positives, sum_per_set,
-                                                         round(num_positive_sequences/number_of_folds), number_of_folds)
+def stratify_training_data(features, labels, trajectory_association, original_trajectory_sizes,
+                           original_number_of_positives, number_of_folds):
+    scaler = MinMaxScaler()
+    stacked = np.stack([original_number_of_positives, original_trajectory_sizes]).transpose()
+    scaler.fit(stacked)
+    stacked_trans = scaler.fit_transform(stacked)
+    combined_measure = stacked_trans.sum(axis=1).tolist()
+    sum_per_set = np.sum(combined_measure) / number_of_folds
+    folds_indices_of_orig_trajectories = partitioning.balanced_multi_way_partition(combined_measure, sum_per_set,
+                                           math.inf, number_of_folds)
 
-    folds_indices = [where_positives[f] for f in folds_indices_in_positives]
+    window_indices_in_folds = []
+    for f in folds_indices_of_orig_trajectories:
+        window_indices_in_folds.append(np.random.permutation(np.where(np.isin(trajectory_association, f))[0]))
 
-    where_negatives = list(set(list(range(len(num_positives)))) - set(where_positives))
-    num_negative_sequences = len(where_negatives)
-    num_negatives_in_fold = int(np.floor(num_negative_sequences/number_of_folds))
-    range_negatives = list(range(0, num_negatives_in_fold * (number_of_folds+1), num_negatives_in_fold))
-    folds_indices = [np.random.permutation(np.append(fold, where_negatives[k:k2])) for fold, k, k2
-                     in zip(folds_indices, range_negatives[:-1], range_negatives[1:])]
     training = {'features': features, 'labels': labels, 'association': trajectory_association}
-    return training,  folds_indices  # if we need folds
+    return training,  window_indices_in_folds
+
+# def stratify_training_data2(features, labels, trajectory_association, number_of_folds):
+#     num_positives = np.sum(labels, axis=1)
+#     where_positives = np.nonzero(num_positives)[0]
+#     only_positives = list(num_positives[where_positives])
+#     sum_per_set = round(np.sum(only_positives)/number_of_folds)
+#     num_positive_sequences = only_positives.__len__()
+#     folds_indices_in_positives = partitioning.balanced_multi_way_partition(only_positives, sum_per_set,
+#                                                          round(num_positive_sequences/number_of_folds), number_of_folds)
+#
+#     folds_indices = [where_positives[f] for f in folds_indices_in_positives]
+#
+#     where_negatives = list(set(list(range(len(num_positives)))) - set(where_positives))
+#     num_negative_sequences = len(where_negatives)
+#     num_negatives_in_fold = int(np.floor(num_negative_sequences/number_of_folds))
+#     range_negatives = list(range(0, num_negatives_in_fold * (number_of_folds+1), num_negatives_in_fold))
+#     folds_indices = [np.random.permutation(np.append(fold, where_negatives[k:k2])) for fold, k, k2
+#                      in zip(folds_indices, range_negatives[:-1], range_negatives[1:])]
+#     training = {'features': features, 'labels': labels, 'association': trajectory_association}
+#     return training,  folds_indices  # if we need folds
 
 
 def create_validation_set(training, folds_indices, fold_num=0):
     validation = {}
-    validation['features'] = training['features'][folds_indices[fold_num], :, :]
-    validation['labels'] = training['labels'][folds_indices[fold_num], :]
+    validation['features'] = training['features'][folds_indices[fold_num]]
+    validation['labels'] = training['labels'][folds_indices[fold_num]]
     validation['association'] = training['association'][folds_indices[fold_num]]
 
     training['features'] = np.delete(training['features'], folds_indices[fold_num], axis=0)
@@ -125,6 +159,12 @@ def create_validation_set(training, folds_indices, fold_num=0):
     training['association'] = np.delete(training['association'], folds_indices[fold_num])
     return validation
 
+def take_only_positive_windows(training):
+     num_positives = np.sum(training['labels'], axis=1)
+     where_positives = np.nonzero(num_positives)[0]
+     where_negatives = list(set(list(range(len(num_positives)))) - set(where_positives))
+     training['labels'] = np.delete(training['labels'], where_negatives, axis=0)
+     training['features'] = np.delete(training['features'], where_negatives, axis=0)
 
 def dilate_labels(training, window_size):
     # currently only rectangular window, add other window types if needed
@@ -162,7 +202,7 @@ def augment_random_rotations(training, circular_indices, spatial_coordinate_indi
             sequence[:, spatial_coordinate_indices] = np.matmul(j, xy.T).T
         random_thetas.append(random_thetas_new)
         training['features'] = np.concatenate([training['features'], new_features])
-    training['labels'] = np.tile(training['labels'], [augment_factor+1, 1])
+    training['labels'] = np.tile(training['labels'], [augment_factor+1, 1, 1])
     random_thetas = np.concatenate(random_thetas)
     return random_thetas
 
@@ -174,13 +214,13 @@ def augment_xy_flip(training, circular_indices, spatial_coordinate_indices):
     num_flips = len(theta_flip)
     num_series_examples = training['features'].shape[0]
     for thet, spat_ind in zip(theta_flip, spatial_flip_ind):
-        new_features = copy.copy(training['features'][:num_series_examples, :, :])
+        new_features = copy.copy(training['features'][:num_series_examples])
         for sequence in new_features:
             for index in circular_indices:
                 sequence[:, index] = (thet-sequence[:, index]) % 360
             sequence[:, spatial_coordinate_indices[spat_ind]] = -sequence[:, spatial_coordinate_indices[spat_ind]]
         training['features'] = np.concatenate([training['features'], new_features])
-    training['labels'] = np.tile(training['labels'], [num_flips+1, 1])
+    training['labels'] = np.tile(training['labels'], [num_flips+1, 1, 1])
 
 
 def detrend(data, spatial_coordinate_indices):
@@ -234,7 +274,22 @@ def add_aggregate_velocity_features(data, velocity_magnitude_indices):
         sequence_list.append(np.insert(sequence, std_insert_indices, rolling_std, axis=1))
     data['features'] = np.stack(sequence_list)
 
-    # TODO: feature engineering -  maybe other measures (kurtosis,
-    #  skew)?
 
-    # TODO: normalization/standardization?
+def show_shapes(training, validation, test):
+    for data, dataname in zip([training, validation, test], ('training', 'validation', 'test')):
+        print(dataname + ':')
+        print("Expected: (num_samples, timesteps, features)")
+        print("Sequences: {}".format(data['features'].shape))
+        print("Targets:   {}".format(data['labels'].shape))
+        print('\n')
+
+        # def shuffle(data):
+#     # test!!!!
+#     rand_instance = random.Random()
+#     state = rand_instance.getstate()
+#     random.shuffle(data['features'])
+#     random.setstate(state)
+#     random.shuffle(data['labels'])
+#     random.setstate(state)
+#     random.shuffle(data['association'])
+

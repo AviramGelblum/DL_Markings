@@ -1,12 +1,7 @@
-import keras.layers as layers
-import keras.models as models
-import keras
-import re
+import tensorflow.keras.layers as layers
+import tensorflow.keras.models as models
+import tensorflow.keras as keras
 import math
-import numpy as np
-
-
-
 
 class UNet1D:
     # sequence-to-sequence 1D UNet model
@@ -34,8 +29,8 @@ class UNet1D:
             raise InputError('initial_num_filters must be a power of 2')
 
     def __validate_input_size(self, input_size):
-        if not input_size[0] % self.kernel_size**self.depth:
-            raise InputError('Input must be divisible by ' + str(self.depth))
+        if input_size[0] % self.kernel_size**self.depth:
+            raise InputError('Input must be divisible by ' + str(self.kernel_size**self.depth))
 
     def __calculate_filters(self, initial_num_filters):
         initial_filter_power = int(math.log2(initial_num_filters))
@@ -123,7 +118,7 @@ class SepConvLayerBlock(LayerBlock):
 
     def create_block(self):
         self.current_layer = layers.SeparableConv1D(self.filters, self.kernel_size, activation=self.activation,
-                                                    padding="same")(self.current_layer)
+                                                    padding="same", kernel_initializer='he_normal')(self.current_layer)
         if self.max_pool_size:
             current_layer, residual = super().create_block()
             return current_layer, residual
@@ -140,21 +135,40 @@ class TransConvLayerBlock(LayerBlock):
 
     def create_block(self):
         self.current_layer = layers.Conv1DTranspose(self.filters, self.kernel_size, activation=self.activation,
-                                                    strides=self.strides)(self.current_layer)
+                                                    strides=self.strides, kernel_initializer='he_normal')(
+            self.current_layer)
         current_layer = super().create_block()
         return current_layer
 
 class InputError(Exception):
     pass
 
-def main():
-    if __name__== "__main__":
-       input_size = (999, 8)  # size of sequence, number of features
-       maxpool = [3, 3, 3, None]
-       dropout = [None, None, 0.5, 0.5]
-       unet = UNet1D(input_size, depth=4, kernel_size=3, initial_num_filters=32, dropout=dropout,
-                     maxpool=maxpool, BatchNorm=True)
-       unet.model.summary()
 
-main()
+training_parameters = {'learning_rate': 0.0005, 'n_epoch': 125, 'batch_size': 32, 'probability_threshold': 0.25}
 
+
+def lrscheduler(epoch, learning_rate):
+    # scheduler function for LearningRateScheduler callback
+    if epoch < training_parameters['n_epoch']*0.75:
+        lr = learning_rate
+    elif epoch < training_parameters['n_epoch']*0.9:
+        lr = learning_rate/10
+    else:
+        lr = learning_rate/100
+    return lr
+
+
+
+
+
+# def main():
+#     if __name__== "__main__":
+#        input_size = (594, 8)  # size of sequence, number of features, input size must be divisble by 27 for the
+#        # current architecture
+#        maxpool = [3, 3, 3, None]
+#        dropout = [None, None, 0.5, 0.5]
+#        unet = UNet1D(input_size, depth=4, kernel_size=3, initial_num_filters=32, dropout=dropout,
+#                      maxpool=maxpool, BatchNorm=True)
+#        unet.model.summary()
+#
+# main()
