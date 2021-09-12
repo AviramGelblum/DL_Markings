@@ -9,11 +9,20 @@ import glob
 
 # print("scipy dilate time:", timeit.default_timer() - starttime)
 
-
-
 # region DataLoader Class and child classes
 # region Base Loader Class
 class DataLoader:
+
+    #factory static method
+    @staticmethod
+    def loader_factory(data_format, dir_path):
+        loader_class_dict = {'csv': csvLoader}
+        if data_format in loader_class_dict:
+            loader_class = loader_class_dict[data_format]
+            return loader_class(dir_path)
+        else:
+            raise KeyError(data_format + ' is not a valid data format.')
+
 
     # region Constructor
     def __init__(self, dir_path):
@@ -82,3 +91,6 @@ class csvLoader(DataLoader):
 
 # endregion
 # endregion
+
+
+

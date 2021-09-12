@@ -20,7 +20,6 @@ MARKING_TIME = 0.1  # typical marking time in sec
 fps = 50
 # endregion Globals
 
-
 def get_set_randomality():
     filename = 'pickled_random_state.pic'
     try:
@@ -118,7 +117,7 @@ def stratify_training_data(features, labels, trajectory_association, original_tr
     combined_measure = stacked_trans.sum(axis=1).tolist()
     sum_per_set = np.sum(combined_measure) / number_of_folds
     folds_indices_of_orig_trajectories = partitioning.balanced_multi_way_partition(combined_measure, sum_per_set,
-                                           math.inf, number_of_folds)
+                                           len(combined_measure) // number_of_folds, number_of_folds)
 
     window_indices_in_folds = []
     for f in folds_indices_of_orig_trajectories:
@@ -127,25 +126,7 @@ def stratify_training_data(features, labels, trajectory_association, original_tr
     training = {'features': features, 'labels': labels, 'association': trajectory_association}
     return training,  window_indices_in_folds
 
-# def stratify_training_data2(features, labels, trajectory_association, number_of_folds):
-#     num_positives = np.sum(labels, axis=1)
-#     where_positives = np.nonzero(num_positives)[0]
-#     only_positives = list(num_positives[where_positives])
-#     sum_per_set = round(np.sum(only_positives)/number_of_folds)
-#     num_positive_sequences = only_positives.__len__()
-#     folds_indices_in_positives = partitioning.balanced_multi_way_partition(only_positives, sum_per_set,
-#                                                          round(num_positive_sequences/number_of_folds), number_of_folds)
-#
-#     folds_indices = [where_positives[f] for f in folds_indices_in_positives]
-#
-#     where_negatives = list(set(list(range(len(num_positives)))) - set(where_positives))
-#     num_negative_sequences = len(where_negatives)
-#     num_negatives_in_fold = int(np.floor(num_negative_sequences/number_of_folds))
-#     range_negatives = list(range(0, num_negatives_in_fold * (number_of_folds+1), num_negatives_in_fold))
-#     folds_indices = [np.random.permutation(np.append(fold, where_negatives[k:k2])) for fold, k, k2
-#                      in zip(folds_indices, range_negatives[:-1], range_negatives[1:])]
-#     training = {'features': features, 'labels': labels, 'association': trajectory_association}
-#     return training,  folds_indices  # if we need folds
+
 
 
 def create_validation_set(training, folds_indices, fold_num=0):
@@ -282,14 +263,4 @@ def show_shapes(training, validation, test):
         print("Sequences: {}".format(data['features'].shape))
         print("Targets:   {}".format(data['labels'].shape))
         print('\n')
-
-        # def shuffle(data):
-#     # test!!!!
-#     rand_instance = random.Random()
-#     state = rand_instance.getstate()
-#     random.shuffle(data['features'])
-#     random.setstate(state)
-#     random.shuffle(data['labels'])
-#     random.setstate(state)
-#     random.shuffle(data['association'])
 
