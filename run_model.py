@@ -42,7 +42,7 @@ def main():
 
     print_cross_validation_results(run_object.cv_evaluations)
     predicted = run_object.evaluation.get_predicted_markings(threshold=0.5, threshold_type='recall')
-    k = 1
+    k=1
 
 if __name__ == "__main__":
     main()
