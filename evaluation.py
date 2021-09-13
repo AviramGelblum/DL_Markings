@@ -117,9 +117,11 @@ class ChunkProcess:
     def _label_chunks(self):
         unique_vals = np.unique(self.eval_obj.validation.association)
         for val in unique_vals:
-            labels_out = self.predicted_labels[np.where(self.eval_obj.validation.association == val)]
-            labels_out = labels_out[np.argsort(self.eval_obj.validation.window_indices_in_folds[self.eval_obj.validation_fold_index]
-                                               [np.where(self.eval_obj.validation.association == val)])]
+            indices_of_trajectory = np.where(self.eval_obj.validation.association == val)
+            labels_out = self.predicted_labels[indices_of_trajectory]
+
+            window_indices_in_fold = self.eval_obj.validation.window_indices_in_folds[self.eval_obj.validation_fold_index]
+            labels_out = labels_out[np.argsort(window_indices_in_fold[indices_of_trajectory])]
             yield labels_out, val
 
     def _final_sequence_from_labeled_windows(self, labels):
@@ -149,12 +151,14 @@ class ChunkProcess:
 
     def _chunk_loop(self):
         lc_gen = self._label_chunks()
-        for chunk, actual_full_sequence in zip(lc_gen, self.eval_obj.validation.labels):
+        for chunk, actual_full_sequence, name \
+                in zip(lc_gen, self.eval_obj.validation.labels, self.eval_obj.validation.names):
             actual_full_sequence = actual_full_sequence.astype(float).reshape(-1, 1)
             predicted_full_sequence, actual_full_sequence = self._get_full_sequences(chunk[0], actual_full_sequence)
             args = {'predicted_full_sequence': predicted_full_sequence,
                     'actual_full_sequence': actual_full_sequence,
-                    'chunk': chunk}
+                    'chunk': chunk,
+                    'name': name}
             self._chunk_internal(args)
 
     def _chunk_internal(self, args):
@@ -172,7 +176,7 @@ class PredictedMarkingsGetter(ChunkProcess):
         return self.predicted_full_sequences
 
     def _chunk_internal(self, args):
-        dict_key = str(args['chunk'][1])
+        dict_key = str(args['name'])
         self.predicted_full_sequences[dict_key] = args['predicted_full_sequence']
 
 

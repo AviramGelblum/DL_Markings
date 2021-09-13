@@ -3,7 +3,6 @@ import re
 import os
 import glob
 
-
 # import timeit
 # starttime = timeit.default_timer()
 
@@ -12,8 +11,7 @@ import glob
 # region DataLoader Class and child classes
 # region Base Loader Class
 class DataLoader:
-
-    #factory static method
+    # factory static method
     @staticmethod
     def loader_factory(data_format, dir_path):
         loader_class_dict = {'csv': csvLoader}
@@ -22,7 +20,6 @@ class DataLoader:
             return loader_class(dir_path)
         else:
             raise KeyError(data_format + ' is not a valid data format.')
-
 
     # region Constructor
     def __init__(self, dir_path):

@@ -8,6 +8,7 @@ from sklearn.linear_model import LinearRegression
 from enum import Enum, auto
 from Pipeline import Iprocessable
 import itertools
+import os
 
 
 class DataType(Enum):
@@ -19,9 +20,13 @@ class DataType(Enum):
 
 class Data(Iprocessable):
 
-    def __init__(self, data: list, runner):
+    def __init__(self, data: list, filenames, runner):
         self.labels = [mat[:, -1] for mat in data]  # assume numpy
         self.features = [mat[:, :-1] for mat in data]
+        self.time = None
+
+        self.names = None
+        self.parse_filenames_to_names(filenames)
 
         self.windowed_labels = None
         self.windowed_features = None
@@ -50,6 +55,7 @@ class Data(Iprocessable):
         associated_trajectory_indices = np.unique(new_data.association)
         new_data.features = [self.features[k] for k in associated_trajectory_indices]
         new_data.labels = [self.labels[k] for k in associated_trajectory_indices]
+        new_data.names = [self.names[k] for k in associated_trajectory_indices]
 
         if type_in is None:
             type_in = DataType.Full
@@ -68,6 +74,12 @@ class Data(Iprocessable):
         if self._type in instance_types:
             return True
         return False
+
+    def parse_filenames_to_names(self, filenames):
+        pass
+
+    def get_time_points(self, *args, **kwargs):
+        pass
 
     def remove_features(self, to_remove):
         num_features = self.features[0].shape[1]
@@ -91,6 +103,7 @@ class Data(Iprocessable):
         where_positives = np.nonzero(num_positives)[0]
         self.labels = [self.labels[w] for w in where_positives]
         self.features = [self.features[w] for w in where_positives]
+        self.names = [self.names[w] for w in where_positives]
         self.history['removed no-positive sequences'] = True
 
     def assure_binary_labels(self):
@@ -280,6 +293,22 @@ class Data(Iprocessable):
             sequence_list.append(np.delete(sequence, columns_to_remove, axis=1))
         self.windowed_features = np.stack(sequence_list)
         self.history[r'separated circular features into cos/sin'] = True
+
+
+class AntData(Data):
+    def __init__(self, data: list, filenames, runner):
+        super().__init__(data, filenames, runner)
+        self.frames = None
+
+    def parse_filenames_to_names(self, filenames):
+        splits = [os.path.split(filename) for filename in filenames]
+        ants = [s[1].split('.')[0][3:] for s in splits]
+        videos = [os.path.split(s[0])[1][1:] for s in splits]
+        self.names = [v + '_' + a for v, a in zip(videos, ants)]
+
+    def get_time_points(self, index):
+        self.time = [mat[index, :] for mat in self.features]
+
 
 
 def divisible_window_size(orig_size, divider):

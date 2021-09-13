@@ -78,7 +78,7 @@ class Runner:
         self.data = loader.load_data(read_kwargs)
 
         # assume working with numpy, could be changed to accommodate other libraries (pandas etc. if needed)
-        self.data = Data.Data(loader.to_numpy(self.data), self)
+        self.data = Data.AntData(loader.to_numpy(self.data), loader.filenames, self)
         self._state = RunnerState.Loaded
 
     def prepare_model(self):

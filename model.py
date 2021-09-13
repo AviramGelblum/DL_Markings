@@ -62,11 +62,9 @@ class Model(Iprocessable):
 
     def predict(self, features=None):
         if features is None:
-            self.validation_predicted_probabilities = np.array(self.built_model.model(
-                self.validation_data.windowed_features))
+            self.validation_predicted_probabilities = np.array(self.built_model.model(self.validation_data.windowed_features))
             if isinstance(self.runner.evaluation, evaluation.Evaluation):
                 self.runner.evaluation.predicted_probabilities = self.validation_predicted_probabilities
-                self.runner.evaluation.validation_fold_index = self.validation_fold_index
         else:
             return np.array(self.built_model.model(features))
 

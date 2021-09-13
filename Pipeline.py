@@ -24,12 +24,21 @@ class Pipeline:
                                 method.__name__ + ' in pipe')
 
     def process(self, instances):
+        def get_instance_class_name(instance):
+            name = instance.__class__.__bases__[0].__name__
+            wrong_bases = {'object', 'Iprocessable'}
+            if name in wrong_bases:
+                return instance.__class__.__name__
+            else:
+                return name
+
         for mm in enumerate(self.pipe):
             m = mm[1]
             print('Running ' + m[0].__name__)
             class_name = m[0].__qualname__.split('.')[-2]
             for instance in instances:
-                if instance.__class__.__name__ == class_name:
+                instance_class_name = get_instance_class_name(instance)
+                if instance_class_name == class_name:
                     if instance.verify_type(m[3]):
                         m[0](instance, *m[1], **m[2])
                         print(instance.history)
